@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storyboard Creator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #18191b;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #appTitle {
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 20px;
+        }
+        #dropZone {
+            border: 2px dashed #666;
+            padding: 20px;
+            text-align: center;
+            background-color: #2c2d30;
+            margin-bottom: 20px;
+            color: #ccc;
+            min-height: 100px;
+            width: 2000px;
+        }
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(4, 485px);
+            gap: 20px;
+            background-color: #18191b;
+            justify-content: center;
+            width: 2000px;
+            box-sizing: content-box;
+            padding-right: 20px; /* Thêm gap bên phải */
+        }
+        .grid-item {
+            background-color: #2c2d30;
+            border: 1px solid #444;
+            padding: 10px;
+            text-align: center;
+            cursor: move;
+            position: relative;
+            width: 465px;
+            box-sizing: content-box;
+        }
+        .grid-item img {
+            max-width: 100%;
+            max-height: 300px;
+            object-fit: contain;
+        }
+        .grid-item textarea {
+            width: 100%;
+            height: 40px;
+            margin-top: 10px;
+            resize: none;
+            background-color: #3a3b3e;
+            color: #fff;
+            border: 1px solid #555;
+            font-size: 14px;
+        }
+        .delete-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: none;
+            color: #fff;
+            border: none;
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            line-height: 18px;
+            text-align: center;
+            display: none;
+        }
+        .grid-item:hover .delete-btn {
+            display: block;
+        }
+        .delete-btn:hover {
+            color: #ff7777;
+        }
+        #exportButtons {
+            margin-top: 20px;
+            text-align: center;
+            width: 2000px;
+            display: flex;
+            justify-content: center;
+        }
+        button {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #4a4b50;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #5a5b60;
+        }
+        .dragging {
+            opacity: 0.7;
+            transform: scale(1.1);
+            z-index: 1000;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+        }
+        .placeholder {
+            border: 2px dashed #666;
+            background-color: #3a3b3e;
+            opacity: 0.5;
+            width: 465px;
+            height: 380px;
+            box-sizing: content-box;
+        }
+        #errorMessage {
+            color: #ff5555;
+            text-align: center;
+            margin-top: 10px;
+            width: 2000px;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="appTitle">Storyboard</h1>
+    <div id="dropZone">Kéo và thả hình ảnh (JPG, PNG) vào đây</div>
+    <div id="errorMessage"></div>
+    <div id="grid"></div>
+    <div id="exportButtons">
+        <button onclick="exportToPNG()">Xuất thành PNG</button>
+    </div>
+
+    <script src="./lib/html2canvas.min.js"></script>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const grid = document.getElementById('grid');
+        const errorMessage = document.getElementById('errorMessage');
+
+        // Xử lý kéo thả hình ảnh vào dropZone
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.style.borderColor = '#999';
+        });
+
+        dropZone.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.style.borderColor = '#666';
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropZone.style.borderColor = '#666';
+            errorMessage.textContent = '';
+
+            const files = e.dataTransfer.files;
+            if (files.length === 0) {
+                errorMessage.textContent = 'Không tìm thấy file. Vui lòng thử lại.';
+                return;
+            }
+
+            Array.from(files).forEach(file => {
+                if (file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        addImageToGrid(event.target.result);
+                    };
+                    reader.onerror = () => {
+                        errorMessage.textContent = 'Lỗi khi đọc file: ' + file.name;
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+                    errorMessage.textContent = `File ${file.name} không phải hình ảnh (JPG, PNG).`;
+                }
+            });
+        });
+
+        // Thêm hình ảnh vào lưới
+        function addImageToGrid(src) {
+            const gridItem = document.createElement('div');
+            gridItem.className = 'grid-item';
+            gridItem.draggable = true;
+            gridItem.innerHTML = `
+                <img src="${src}" alt="Storyboard Image">
+                <button class="delete-btn" onclick="this.parentElement.remove()">X</button>
+                <textarea placeholder="Nhập mô tả..."></textarea>
+            `;
+            grid.appendChild(gridItem);
+            addDragAndDropListeners(gridItem);
+        }
+
+        // Xử lý kéo thả để thay đổi vị trí
+        function addDragAndDropListeners(item) {
+            let placeholder = null;
+
+            item.addEventListener('dragstart', (e) => {
+                if (e.target.classList.contains('grid-item')) {
+                    e.target.classList.add('dragging');
+                    e.dataTransfer.setData('text/plain', '');
+                    placeholder = document.createElement('div');
+                    placeholder.className = 'grid-item placeholder';
+                    grid.insertBefore(placeholder, item.nextSibling);
+                } else {
+                    e.preventDefault();
+                }
+            });
+
+            item.addEventListener('dragend', (e) => {
+                e.target.classList.remove('dragging');
+                if (placeholder) {
+                    placeholder.remove();
+                    placeholder = null;
+                }
+            });
+
+            grid.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const dragging = document.querySelector('.dragging');
+                if (dragging && placeholder) {
+                    const target = e.target.closest('.grid-item:not(.dragging)');
+                    if (target) {
+                        const rect = target.getBoundingClientRect();
+                        const midX = rect.left + rect.width / 2;
+                        if (e.clientX < midX) {
+                            grid.insertBefore(placeholder, target);
+                        } else {
+                            grid.insertBefore(placeholder, target.nextSibling);
+                        }
+                    } else if (e.target === grid || e.target === placeholder) {
+                        grid.appendChild(placeholder);
+                    }
+                }
+            });
+
+            grid.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const dragging = document.querySelector('.dragging');
+                if (dragging && placeholder) {
+                    grid.insertBefore(dragging, placeholder);
+                    placeholder.remove();
+                    placeholder = null;
+                }
+            });
+        }
+
+        // Xuất thành PNG
+        function exportToPNG() {
+            const tempContainer = document.createElement('div');
+            tempContainer.style.backgroundColor = '#18191b';
+            tempContainer.style.padding = '20px';
+            tempContainer.style.width = '6060px'; /* 4x1500px + 3x20px gap + 2x20px padding */
+            const clonedGrid = grid.cloneNode(true);
+            clonedGrid.style.gridTemplateColumns = 'repeat(4, 1500px)';
+            clonedGrid.style.gap = '20px';
+            clonedGrid.style.width = '6060px';
+            clonedGrid.style.boxSizing = 'content-box';
+            clonedGrid.style.paddingRight = '20px'; /* Thêm gap bên phải */
+            Array.from(clonedGrid.children).forEach(item => {
+                if (!item.classList.contains('placeholder')) {
+                    item.style.width = '1480px'; /* 1500px - 2x10px padding */
+                    item.style.boxSizing = 'content-box';
+                    const img = item.querySelector('img');
+                    img.style.maxWidth = '100%';
+                    img.style.maxHeight = '900px';
+                    const textarea = item.querySelector('textarea');
+                    textarea.style.height = '120px';
+                    textarea.style.fontSize = '42px';
+                }
+            });
+            tempContainer.appendChild(clonedGrid);
+            document.body.appendChild(tempContainer);
+
+            html2canvas(tempContainer, {
+                scale: 1,
+                width: 6060,
+                height: tempContainer.offsetHeight,
+                windowWidth: 6060,
+                windowHeight: tempContainer.offsetHeight,
+                useCORS: true,
+                allowTaint: true
+            }).then(canvas => {
+                if (canvas.width === 0 || canvas.height === 0) {
+                    errorMessage.textContent = 'Lỗi: Canvas quá lớn hoặc không tạo được.';
+                    document.body.removeChild(tempContainer);
+                    return;
+                }
+                const link = document.createElement('a');
+                link.download = 'storyboard.png';
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                document.body.removeChild(tempContainer);
+            }).catch(err => {
+                errorMessage.textContent = 'Lỗi khi xuất PNG: ' + err.message;
+                document.body.removeChild(tempContainer);
+            });
+        }
+    </script>
+</body>
+</html>
